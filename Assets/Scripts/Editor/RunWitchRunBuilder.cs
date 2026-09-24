@@ -14,7 +14,9 @@ public static class RunWitchRunBuilder
     private const string GameplayScenePath = "Assets/Scenes/Gameplay/Gameplay.unity";
     private const string CreditsScenePath = "Assets/Scenes/Credits/Credits.unity";
     private const string PlayerDataPath = "Assets/Data/PlayerData/PlayerData.asset";
+    private const string ForestBiomePath = "Assets/Data/Biomes/ForestBiome.asset";
     private const string MixerPath = "Assets/Audio/Mixers/MainMixer.mixer";
+    private const string UiActionsPath = "Assets/Data/UIActions.asset";
 
     private const float GroundTopY = -2.5f;
     private const float PlayerStartX = -5f;
@@ -66,6 +68,7 @@ public static class RunWitchRunBuilder
             LoadUiAssets();
 
             EnsurePlayerData();
+            EnsureForestBiome();
             EnsureMaterial("ParticleSpark", "Assets/Art/Particles/particle_spark.png");
             EnsureMaterial("ParticleDot", "Assets/Art/Particles/particle_dot.png");
 
@@ -74,6 +77,8 @@ public static class RunWitchRunBuilder
             BuildObstaclePrefabs();
             BuildGemPrefab();
             BuildBroomPrefab();
+            BuildInvincibilityPrefab();
+            BuildExtraLifePrefab();
 
             BuildMainMenuScene();
             BuildGameplayScene();
@@ -126,7 +131,7 @@ public static class RunWitchRunBuilder
     {
         string[] folders =
         {
-            "Assets/Data/PlayerData", "Assets/Prefabs/Player", "Assets/Prefabs/Obstacles",
+            "Assets/Data/PlayerData", "Assets/Data/Biomes", "Assets/Prefabs/Player", "Assets/Prefabs/Obstacles",
             "Assets/Prefabs/Collectibles", "Assets/Prefabs/PowerUps", "Assets/Art/Materials",
             "Assets/Scenes/MainMenu", "Assets/Scenes/Gameplay", "Assets/Scenes/Credits"
         };
@@ -181,6 +186,33 @@ public static class RunWitchRunBuilder
             AssetDatabase.SaveAssets();
         }
         return data;
+    }
+
+    private static BiomeData EnsureForestBiome()
+    {
+        var biome = AssetDatabase.LoadAssetAtPath<BiomeData>(ForestBiomePath);
+        if (biome == null)
+        {
+            biome = ScriptableObject.CreateInstance<BiomeData>();
+            AssetDatabase.CreateAsset(biome, ForestBiomePath);
+        }
+
+        if (biome.layers == null || biome.layers.Length == 0)
+        {
+            const string env = "Assets/Art/Environment/";
+            biome.layers = new[]
+            {
+                new BiomeData.Layer { layerName = "TreesFar", sprite = LoadSprite(env + "bg_trees_far.png"), speedFactor = 0.08f, ambientSpeed = 0f },
+                new BiomeData.Layer { layerName = "TreesMid", sprite = LoadSprite(env + "bg_trees_mid.png"), speedFactor = 0.2f, ambientSpeed = 0f },
+                new BiomeData.Layer { layerName = "FogBack", sprite = LoadSprite(env + "bg_fog_back.png"), speedFactor = 0.35f, ambientSpeed = 0.15f },
+                new BiomeData.Layer { layerName = "TreesNear", sprite = LoadSprite(env + "bg_trees_near.png"), speedFactor = 0.45f, ambientSpeed = 0f },
+                new BiomeData.Layer { layerName = "Ground", sprite = LoadSprite(env + "ground.png"), speedFactor = 1f, ambientSpeed = 0f },
+                new BiomeData.Layer { layerName = "GroundPlants", sprite = LoadSprite(env + "ground_plants.png"), speedFactor = 1f, ambientSpeed = 0f },
+                new BiomeData.Layer { layerName = "FogFront", sprite = LoadSprite(env + "bg_fog_front.png"), speedFactor = 1.3f, ambientSpeed = 0.3f }
+            };
+            EditorUtility.SetDirty(biome);
+        }
+        return biome;
     }
 
     private static Material EnsureMaterial(string name, string texturePath)
@@ -521,14 +553,19 @@ public static class RunWitchRunBuilder
         foreach (ObstacleDef d in defs)
         {
             var go = new GameObject("Obstacle_" + d.name);
-            var sr = go.AddComponent<SpriteRenderer>();
-            sr.sprite = LoadSprite("Assets/Art/Obstacles/" + d.sprite + ".png");
-            sr.sortingOrder = 5;
             var col = go.AddComponent<BoxCollider2D>();
             col.isTrigger = true;
             col.size = new Vector2(d.hitW, d.hitH);
             col.offset = new Vector2(0f, d.hitH * 0.5f);
-            go.AddComponent<Obstacle>();
+
+            var visual = new GameObject("Visual");
+            visual.transform.SetParent(go.transform, false);
+            var sr = visual.AddComponent<SpriteRenderer>();
+            sr.sprite = LoadSprite("Assets/Art/Obstacles/" + d.sprite + ".png");
+            sr.sortingOrder = 5;
+
+            var obstacle = go.AddComponent<Obstacle>();
+            SetRef(obstacle, "visualRoot", visual.transform);
             go.AddComponent<ScrollingObject>();
             GameObject prefab = SavePrefab(go, ObstaclePrefabPath(d.name));
 
@@ -607,6 +644,68 @@ public static class RunWitchRunBuilder
         return SavePrefab(root, "Assets/Prefabs/PowerUps/MagicBroom.prefab");
     }
 
+    private static GameObject BuildInvincibilityPrefab()
+    {
+        Material sparkMat = LoadMaterial("ParticleSpark");
+
+        var root = new GameObject("InvincibilityPickup");
+        var col = root.AddComponent<BoxCollider2D>();
+        col.isTrigger = true;
+        col.size = new Vector2(1f, 1f);
+        var powerUp = root.AddComponent<PowerUp>();
+        SetInt(powerUp, "type", (int)PowerUpType.Invincibility);
+        root.AddComponent<ScrollingObject>();
+
+        var visual = new GameObject("Visual");
+        visual.transform.SetParent(root.transform, false);
+        var sr = visual.AddComponent<SpriteRenderer>();
+        sr.sprite = LoadSprite("Assets/Art/PowerUps/invincibility.png");
+        sr.sortingOrder = 6;
+
+        ParticleSystem burst = MakeParticles(root.transform, "CollectBurst", Vector3.zero, sparkMat, new ParticleConfig
+        {
+            lifeMin = 0.5f, lifeMax = 1f, speedMin = 2f, speedMax = 5f, sizeMin = 0.15f, sizeMax = 0.3f,
+            colorA = new Color(0.65f, 1f, 0.9f), colorB = Color.white, shape = ParticleSystemShapeType.Circle, radius = 0.2f, order = 13
+        });
+        AddWorldScroll(burst, 1f);
+
+        SetRef(powerUp, "visualRoot", visual.transform);
+        SetRef(powerUp, "collectBurst", burst);
+        SetInt(powerUp, "burstCount", 24);
+        return SavePrefab(root, "Assets/Prefabs/PowerUps/Invincibility.prefab");
+    }
+
+    private static GameObject BuildExtraLifePrefab()
+    {
+        Material sparkMat = LoadMaterial("ParticleSpark");
+
+        var root = new GameObject("ExtraLifePickup");
+        var col = root.AddComponent<BoxCollider2D>();
+        col.isTrigger = true;
+        col.size = new Vector2(1f, 1f);
+        var powerUp = root.AddComponent<PowerUp>();
+        SetInt(powerUp, "type", (int)PowerUpType.ExtraLife);
+        root.AddComponent<ScrollingObject>();
+
+        var visual = new GameObject("Visual");
+        visual.transform.SetParent(root.transform, false);
+        var sr = visual.AddComponent<SpriteRenderer>();
+        sr.sprite = LoadSprite("Assets/Art/PowerUps/extra_life.png");
+        sr.sortingOrder = 6;
+
+        ParticleSystem burst = MakeParticles(root.transform, "CollectBurst", Vector3.zero, sparkMat, new ParticleConfig
+        {
+            lifeMin = 0.5f, lifeMax = 1f, speedMin = 2f, speedMax = 5f, sizeMin = 0.15f, sizeMax = 0.3f,
+            colorA = new Color(1f, 0.4f, 0.55f), colorB = Color.white, shape = ParticleSystemShapeType.Circle, radius = 0.2f, order = 13
+        });
+        AddWorldScroll(burst, 1f);
+
+        SetRef(powerUp, "visualRoot", visual.transform);
+        SetRef(powerUp, "collectBurst", burst);
+        SetInt(powerUp, "burstCount", 24);
+        return SavePrefab(root, "Assets/Prefabs/PowerUps/ExtraLife.prefab");
+    }
+
     private static GameObject SavePrefab(GameObject go, string path)
     {
         GameObject prefab = PrefabUtility.SaveAsPrefabAsset(go, path);
@@ -639,7 +738,7 @@ public static class RunWitchRunBuilder
         return sr;
     }
 
-    private static void MakeLayer(Transform parent, string name, string spritePath, Vector3 pos, int order, float factor, float ambient)
+    private static Transform MakeLayer(Transform parent, string name, string spritePath, Vector3 pos, int order, float factor, float ambient)
     {
         var root = new GameObject(name);
         root.transform.SetParent(parent, false);
@@ -658,6 +757,7 @@ public static class RunWitchRunBuilder
         var layer = root.AddComponent<ParallaxLayer>();
         SetFloat(layer, "speedFactor", factor);
         SetFloat(layer, "ambientSpeed", ambient);
+        return root.transform;
     }
 
     private static Transform BuildEnvironment(bool withGroundCollider)
@@ -667,22 +767,26 @@ public static class RunWitchRunBuilder
 
         MakeSprite(root, "Sky", env + "bg_sky.png", Vector3.zero, -100);
         MakeSprite(root, "Moon", env + "bg_moon.png", new Vector3(5.2f, 2.7f, 0f), -95);
-        MakeLayer(root, "TreesFar", env + "bg_trees_far.png", Vector3.zero, -90, 0.08f, 0f);
-        MakeLayer(root, "TreesMid", env + "bg_trees_mid.png", Vector3.zero, -80, 0.2f, 0f);
-        MakeLayer(root, "FogBack", env + "bg_fog_back.png", Vector3.zero, -75, 0.35f, 0.15f);
-        MakeLayer(root, "TreesNear", env + "bg_trees_near.png", Vector3.zero, -70, 0.45f, 0f);
-        MakeLayer(root, "Ground", env + "ground.png", new Vector3(0f, GroundTopY - 1f, 0f), -10, 1f, 0f);
-        MakeLayer(root, "GroundPlants", env + "ground_plants.png", new Vector3(0f, GroundTopY - 0.05f, 0f), -9, 1f, 0f);
-        MakeLayer(root, "FogFront", env + "bg_fog_front.png", Vector3.zero, 30, 1.3f, 0.3f);
+        Transform treesFar = MakeLayer(root, "TreesFar", env + "bg_trees_far.png", Vector3.zero, -90, 0.08f, 0f);
+        Transform treesMid = MakeLayer(root, "TreesMid", env + "bg_trees_mid.png", Vector3.zero, -80, 0.2f, 0f);
+        Transform fogBack = MakeLayer(root, "FogBack", env + "bg_fog_back.png", Vector3.zero, -75, 0.35f, 0.15f);
+        Transform treesNear = MakeLayer(root, "TreesNear", env + "bg_trees_near.png", Vector3.zero, -70, 0.45f, 0f);
+        Transform ground = MakeLayer(root, "Ground", env + "ground.png", new Vector3(0f, GroundTopY - 1f, 0f), -10, 1f, 0f);
+        Transform groundPlants = MakeLayer(root, "GroundPlants", env + "ground_plants.png", new Vector3(0f, GroundTopY - 0.05f, 0f), -9, 1f, 0f);
+        Transform fogFront = MakeLayer(root, "FogFront", env + "bg_fog_front.png", Vector3.zero, 30, 1.3f, 0.3f);
+
+        var rig = root.gameObject.AddComponent<ParallaxRig>();
+        SetRefArray(rig, "layerRoots", new Object[] { treesFar, treesMid, fogBack, treesNear, ground, groundPlants, fogFront });
+        SetRef(rig, "biome", AssetDatabase.LoadAssetAtPath<BiomeData>(ForestBiomePath));
 
         if (withGroundCollider)
         {
-            var ground = new GameObject("GroundCollider");
-            ground.transform.SetParent(root, false);
-            ground.transform.position = new Vector3(0f, GroundTopY - 1f, 0f);
-            var col = ground.AddComponent<BoxCollider2D>();
+            var groundCollider = new GameObject("GroundCollider");
+            groundCollider.transform.SetParent(root, false);
+            groundCollider.transform.position = new Vector3(0f, GroundTopY - 1f, 0f);
+            var col = groundCollider.AddComponent<BoxCollider2D>();
             col.size = new Vector2(60f, 2f);
-            ground.AddComponent<GroundSurface>();
+            groundCollider.AddComponent<GroundSurface>();
         }
         return root;
     }
@@ -822,6 +926,8 @@ public static class RunWitchRunBuilder
         GameObject playerPrefab = LoadPrefab("Assets/Prefabs/Player/Player.prefab");
         GameObject gemPrefab = LoadPrefab("Assets/Prefabs/Collectibles/MoonGem.prefab");
         GameObject broomPrefab = LoadPrefab("Assets/Prefabs/PowerUps/MagicBroom.prefab");
+        GameObject invinciblePrefab = LoadPrefab("Assets/Prefabs/PowerUps/Invincibility.prefab");
+        GameObject extraLifePrefab = LoadPrefab("Assets/Prefabs/PowerUps/ExtraLife.prefab");
         List<SpawnEntry> entries = LoadObstacleEntries();
         BuildCamera();
         BuildEnvironment(true);
@@ -840,7 +946,6 @@ public static class RunWitchRunBuilder
         var spawner = spawnerObject.AddComponent<EndlessSpawner>();
         SetRef(spawner, "player", controller);
         SetRef(spawner, "gemPrefab", gemPrefab);
-        SetRef(spawner, "broomPrefab", broomPrefab);
         SetFloat(spawner, "groundY", GroundTopY);
         var so = new SerializedObject(spawner);
         SerializedProperty list = so.FindProperty("obstacles");
@@ -854,6 +959,25 @@ public static class RunWitchRunBuilder
             e.FindPropertyRelative("height").floatValue = entries[i].height;
             e.FindPropertyRelative("weight").floatValue = entries[i].weight;
             e.FindPropertyRelative("unlockAfterSeconds").floatValue = entries[i].unlockAfterSeconds;
+        }
+
+        var powerUpSlots = new[]
+        {
+            new { name = "MagicBroom", prefab = broomPrefab, first = 130f, min = 160f, max = 260f, height = 1.1f },
+            new { name = "Invincibility", prefab = invinciblePrefab, first = 200f, min = 220f, max = 340f, height = 1.1f },
+            new { name = "ExtraLife", prefab = extraLifePrefab, first = 260f, min = 300f, max = 420f, height = 1.1f }
+        };
+        SerializedProperty powerUpList = so.FindProperty("powerUps");
+        powerUpList.arraySize = powerUpSlots.Length;
+        for (int i = 0; i < powerUpSlots.Length; i++)
+        {
+            SerializedProperty p = powerUpList.GetArrayElementAtIndex(i);
+            p.FindPropertyRelative("name").stringValue = powerUpSlots[i].name;
+            p.FindPropertyRelative("prefab").objectReferenceValue = powerUpSlots[i].prefab;
+            p.FindPropertyRelative("firstDistance").floatValue = powerUpSlots[i].first;
+            p.FindPropertyRelative("minDistance").floatValue = powerUpSlots[i].min;
+            p.FindPropertyRelative("maxDistance").floatValue = powerUpSlots[i].max;
+            p.FindPropertyRelative("height").floatValue = powerUpSlots[i].height;
         }
         so.ApplyModifiedPropertiesWithoutUndo();
 
@@ -890,6 +1014,23 @@ public static class RunWitchRunBuilder
         fill.offsetMax = new Vector2(-3f, -3f);
         fill.gameObject.AddComponent<Image>().color = Cyan;
 
+        RectTransform invincibleIndicator = NewUI("InvincibleIndicator", canvas.transform);
+        Place(invincibleIndicator, Anchor.TopCenter, new Vector2(0f, -340f), new Vector2(520f, 70f));
+        NewText(invincibleIndicator, "Label", "INVINCIBLE", 32, new Color(0.65f, 1f, 0.9f), TextAnchor.MiddleCenter, Anchor.TopCenter, new Vector2(0f, 0f), new Vector2(520f, 40f));
+        RectTransform invincibleBarBg = NewUI("BarBackground", invincibleIndicator);
+        Place(invincibleBarBg, Anchor.BottomCenter, Vector2.zero, new Vector2(520f, 20f));
+        invincibleBarBg.gameObject.AddComponent<Image>().color = new Color(0.06f, 0.03f, 0.15f, 0.9f);
+        RectTransform invincibleFill = NewUI("Fill", invincibleBarBg);
+        invincibleFill.anchorMin = Vector2.zero;
+        invincibleFill.anchorMax = Vector2.one;
+        invincibleFill.pivot = new Vector2(0f, 0.5f);
+        invincibleFill.offsetMin = new Vector2(3f, 3f);
+        invincibleFill.offsetMax = new Vector2(-3f, -3f);
+        invincibleFill.gameObject.AddComponent<Image>().color = new Color(0.65f, 1f, 0.9f);
+
+        Text lives = NewText(canvas.transform, "LivesDisplay", "LIVES: 0", 30, new Color(1f, 0.4f, 0.55f), TextAnchor.MiddleRight,
+            Anchor.TopRight, new Vector2(-40f, -140f), new Vector2(400f, 44f));
+
         NewText(canvas.transform, "Hints", "SPACE / CLICK: JUMP     P / ESC: PAUSE", 28, new Color(0.72f, 0.66f, 0.9f, 0.75f),
             TextAnchor.MiddleCenter, Anchor.BottomCenter, new Vector2(0f, 24f), new Vector2(1200f, 40f));
 
@@ -919,6 +1060,10 @@ public static class RunWitchRunBuilder
         SetRef(uiManager, "popupText", popup);
         SetRef(uiManager, "broomIndicator", broomIndicator.gameObject);
         SetRef(uiManager, "broomFill", fill);
+        SetRef(uiManager, "invincibleIndicator", invincibleIndicator.gameObject);
+        SetRef(uiManager, "invincibleFill", invincibleFill);
+        SetRef(uiManager, "livesDisplay", lives.gameObject);
+        SetRef(uiManager, "livesText", lives);
         SetRef(uiManager, "pausePanel", pauseOverlay.gameObject);
         SetRef(uiManager, "gameOverPanel", overOverlay.gameObject);
         SetRef(uiManager, "settingsMenu", settingsMenu);
@@ -936,6 +1081,8 @@ public static class RunWitchRunBuilder
         pauseOverlay.gameObject.SetActive(false);
         overOverlay.gameObject.SetActive(false);
         broomIndicator.gameObject.SetActive(false);
+        invincibleIndicator.gameObject.SetActive(false);
+        lives.gameObject.SetActive(false);
         settingsMenu.gameObject.SetActive(false);
 
         SaveScene(GameplayScenePath);
@@ -968,11 +1115,63 @@ public static class RunWitchRunBuilder
         var go = new GameObject("EventSystem", typeof(EventSystem));
 #if ENABLE_INPUT_SYSTEM
         var module = go.AddComponent<UnityEngine.InputSystem.UI.InputSystemUIInputModule>();
-        module.AssignDefaultActions();
+        var uiActions = EnsureUiActionsAsset();
+        module.point = EnsureUiActionReference(uiActions, "Point");
+        module.leftClick = EnsureUiActionReference(uiActions, "LeftClick");
+        module.scrollWheel = EnsureUiActionReference(uiActions, "ScrollWheel");
+        AssetDatabase.SaveAssets();
 #else
         go.AddComponent<StandaloneInputModule>();
 #endif
     }
+
+#if ENABLE_INPUT_SYSTEM
+    private static UnityEngine.InputSystem.InputActionAsset EnsureUiActionsAsset()
+    {
+        var asset = AssetDatabase.LoadAssetAtPath<UnityEngine.InputSystem.InputActionAsset>(UiActionsPath);
+        if (asset == null)
+        {
+            string json = "{"
+                + "\"name\":\"UIActions\","
+                + "\"maps\":[{"
+                + "\"name\":\"UI\",\"id\":\"" + System.Guid.NewGuid() + "\","
+                + "\"actions\":["
+                + "{\"name\":\"Point\",\"type\":\"PassThrough\",\"id\":\"" + System.Guid.NewGuid() + "\",\"expectedControlType\":\"Vector2\"},"
+                + "{\"name\":\"LeftClick\",\"type\":\"PassThrough\",\"id\":\"" + System.Guid.NewGuid() + "\",\"expectedControlType\":\"Button\"},"
+                + "{\"name\":\"ScrollWheel\",\"type\":\"PassThrough\",\"id\":\"" + System.Guid.NewGuid() + "\",\"expectedControlType\":\"Vector2\"}"
+                + "],"
+                + "\"bindings\":["
+                + "{\"name\":\"\",\"id\":\"" + System.Guid.NewGuid() + "\",\"path\":\"<Pointer>/position\",\"action\":\"Point\"},"
+                + "{\"name\":\"\",\"id\":\"" + System.Guid.NewGuid() + "\",\"path\":\"<Pointer>/press\",\"action\":\"LeftClick\"},"
+                + "{\"name\":\"\",\"id\":\"" + System.Guid.NewGuid() + "\",\"path\":\"<Mouse>/scroll\",\"action\":\"ScrollWheel\"}"
+                + "]"
+                + "}]"
+                + "}";
+            asset = UnityEngine.InputSystem.InputActionAsset.FromJson(json);
+            AssetDatabase.CreateAsset(asset, UiActionsPath);
+        }
+        return asset;
+    }
+
+    private static UnityEngine.InputSystem.InputActionReference EnsureUiActionReference(UnityEngine.InputSystem.InputActionAsset asset, string actionName)
+    {
+        UnityEngine.InputSystem.InputActionMap map = asset.FindActionMap("UI");
+        UnityEngine.InputSystem.InputAction action = map.FindAction(actionName);
+
+        foreach (Object sub in AssetDatabase.LoadAllAssetsAtPath(UiActionsPath))
+        {
+            if (sub is UnityEngine.InputSystem.InputActionReference existing && existing.action != null && existing.action.id == action.id)
+            {
+                return existing;
+            }
+        }
+
+        var reference = UnityEngine.InputSystem.InputActionReference.Create(action);
+        reference.name = actionName;
+        AssetDatabase.AddObjectToAsset(reference, asset);
+        return reference;
+    }
+#endif
 
     private static RectTransform NewUI(string name, Transform parent)
     {

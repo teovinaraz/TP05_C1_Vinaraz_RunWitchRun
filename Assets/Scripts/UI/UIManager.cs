@@ -11,6 +11,10 @@ public class UIManager : MonoBehaviour
     [SerializeField] private Text popupText;
     [SerializeField] private GameObject broomIndicator;
     [SerializeField] private RectTransform broomFill;
+    [SerializeField] private GameObject invincibleIndicator;
+    [SerializeField] private RectTransform invincibleFill;
+    [SerializeField] private GameObject livesDisplay;
+    [SerializeField] private Text livesText;
 
     [Header("Paneles")]
     [SerializeField] private GameObject pausePanel;
@@ -51,6 +55,8 @@ public class UIManager : MonoBehaviour
         gameOverPanel.SetActive(false);
         settingsMenu.gameObject.SetActive(false);
         broomIndicator.SetActive(false);
+        invincibleIndicator.SetActive(false);
+        livesDisplay.SetActive(false);
 
         pauseButton.onClick.AddListener(pauseManager.Pause);
         resumeButton.onClick.AddListener(pauseManager.Resume);
@@ -67,6 +73,9 @@ public class UIManager : MonoBehaviour
         if (gm.Player != null)
         {
             gm.Player.BroomStarted += OnBroomStarted;
+            gm.Player.InvincibilityStarted += OnInvincibilityStarted;
+            gm.Player.ExtraLifeUsed += OnExtraLifeUsed;
+            gm.Player.ExtraLivesChanged += OnExtraLivesChanged;
         }
 
         OnScoreChanged(gm.Score);
@@ -86,6 +95,9 @@ public class UIManager : MonoBehaviour
         if (gm.Player != null)
         {
             gm.Player.BroomStarted -= OnBroomStarted;
+            gm.Player.InvincibilityStarted -= OnInvincibilityStarted;
+            gm.Player.ExtraLifeUsed -= OnExtraLifeUsed;
+            gm.Player.ExtraLivesChanged -= OnExtraLivesChanged;
         }
     }
 
@@ -107,6 +119,16 @@ public class UIManager : MonoBehaviour
             broomFill.localScale = new Vector3(player.BroomTimeNormalized, 1f, 1f);
         }
 
+        bool invincible = player != null && player.IsInvincible && gm.State != GameState.GameOver;
+        if (invincibleIndicator.activeSelf != invincible)
+        {
+            invincibleIndicator.SetActive(invincible);
+        }
+        if (invincible)
+        {
+            invincibleFill.localScale = new Vector3(player.InvincibleNormalized, 1f, 1f);
+        }
+
         if (gm.State == GameState.GameOver && gameOverPanel.activeSelf && GameInput.RetryPressed)
         {
             gm.RestartGame();
@@ -126,6 +148,22 @@ public class UIManager : MonoBehaviour
     private void OnBroomStarted()
     {
         ShowPopup("MAGIC BROOM!  x" + gm.Player.Data.broomSpeedMultiplier.ToString("0.#") + " SPEED");
+    }
+
+    private void OnInvincibilityStarted()
+    {
+        ShowPopup("INVINCIBLE!");
+    }
+
+    private void OnExtraLifeUsed()
+    {
+        ShowPopup("SAVED! -1 LIFE");
+    }
+
+    private void OnExtraLivesChanged(int count)
+    {
+        livesText.text = "LIVES: " + count;
+        livesDisplay.SetActive(count > 0);
     }
 
     private void OnStateChanged(GameState state)

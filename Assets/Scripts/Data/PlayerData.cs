@@ -31,6 +31,10 @@ public class PlayerData : ScriptableObject
     public float broomSpeedMultiplier = 1.5f;
     public float speedBlendRate = 2.5f;
 
+    [Header("Invencibilidad")]
+    public float invincibilityDuration = 5f;
+    public float extraLifeGraceTime = 1.5f;
+
     [Header("Puntaje")]
     public int moonGemPoints = 10;
     public float survivalPointsPerSecond = 10f;

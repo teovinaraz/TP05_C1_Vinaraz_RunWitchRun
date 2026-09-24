@@ -412,6 +412,54 @@ def make_broom():
     return c
 
 
+def make_heart():
+    rows = [
+        "..##....##..",
+        ".####..####.",
+        "############",
+        "############",
+        "############",
+        ".##########.",
+        "..########..",
+        "...######...",
+        "....####....",
+        ".....##.....",
+    ]
+    c = Canvas(len(rows[0]), len(rows))
+    base, light, dark = hx("#e8355a"), hx("#ff7a95"), hx("#a01e3d")
+    for y, row in enumerate(rows):
+        for x, ch in enumerate(row):
+            if ch != "#":
+                continue
+            col = base
+            if y < 2 and x < 6:
+                col = light
+            elif x > 8 and y > 4:
+                col = dark
+            c.set(x, y, col)
+    c.outline(OUTLINE)
+    return c
+
+
+def make_ward():
+    c = Canvas(16, 16)
+    cx, cy = 7.5, 7.5
+    ring, ring_l = hx("#3fe0a8"), hx("#bdfff0")
+    for y in range(16):
+        for x in range(16):
+            d = math.hypot(x - cx, y - cy)
+            if 5.6 <= d <= 7.0:
+                c.set(x, y, ring_l if (x + y) % 3 == 0 else ring)
+    dim, spark = hx("#a8fce6"), hx("#eafff8")
+    c.line(7, 3, 7, 12, dim)
+    c.line(3, 7, 12, 7, dim)
+    for x, y in ((7, 2), (7, 13), (2, 7), (13, 7)):
+        c.set(x, y, spark)
+    c.circle(cx, cy, 1.6, spark)
+    c.outline(OUTLINE)
+    return c
+
+
 # ----------------------------------------------------------------------------
 # ENTORNO
 # ----------------------------------------------------------------------------
@@ -1048,6 +1096,8 @@ def main():
 
     make_gem().save("Art", "Collectibles", "moon_gem.png")
     make_broom().save("Art", "PowerUps", "magic_broom.png")
+    make_heart().save("Art", "PowerUps", "extra_life.png")
+    make_ward().save("Art", "PowerUps", "invincibility.png")
 
     make_sky(rng).save("Art", "Environment", "bg_sky.png")
     make_moon().save("Art", "Environment", "bg_moon.png")

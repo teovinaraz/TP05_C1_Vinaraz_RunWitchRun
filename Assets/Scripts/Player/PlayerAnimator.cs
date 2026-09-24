@@ -12,6 +12,9 @@ public class PlayerAnimator : MonoBehaviour
     [SerializeField] private Transform broomTransform;
     [SerializeField] private float broomBobAmplitude = 0.06f;
     [SerializeField] private float broomBobSpeed = 12f;
+    [Header("Parpadeo de invencibilidad")]
+    [SerializeField] private float invincibleFlickerSpeed = 16f;
+    [SerializeField] private float invincibleMinAlpha = 0.5f;
 
     private float frameTimer;
     private Vector3 broomStart;
@@ -47,5 +50,11 @@ public class PlayerAnimator : MonoBehaviour
         {
             broomTransform.localPosition = broomStart + Vector3.up * Mathf.Sin(Time.time * broomBobSpeed) * broomBobAmplitude;
         }
+
+        Color color = spriteRenderer.color;
+        color.a = player.IsInvincible
+            ? Mathf.Lerp(invincibleMinAlpha, 1f, (Mathf.Sin(Time.time * invincibleFlickerSpeed) + 1f) * 0.5f)
+            : 1f;
+        spriteRenderer.color = color;
     }
 }

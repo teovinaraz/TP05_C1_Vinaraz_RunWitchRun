@@ -21,9 +21,16 @@ public class PlayerController : MonoBehaviour
     [SerializeField] private int landBurstCount = 10;
     [SerializeField] private float auraRateNormal = 6f;
     [SerializeField] private float auraRateBroom = 40f;
+    [SerializeField] private float auraRateInvincible = 45f;
     [SerializeField] private float broomTrailRate = 90f;
     [SerializeField] private float runDustRate = 14f;
     [SerializeField] private float minAirTimeForLandEffect = 0.15f;
+
+    [Header("Colores del aura")]
+    [SerializeField] private Color auraColorA = new Color(1f, 0.88f, 0.4f);
+    [SerializeField] private Color auraColorB = new Color(0.49f, 0.94f, 1f);
+    [SerializeField] private Color invincibleColorA = new Color(0.85f, 1f, 0.95f);
+    [SerializeField] private Color invincibleColorB = new Color(0.4f, 1f, 0.7f);
 
     private Rigidbody2D rb;
     private readonly Collider2D[] groundHits = new Collider2D[8];
@@ -32,6 +39,8 @@ public class PlayerController : MonoBehaviour
     private float baseSpeed;
     private float speedMultiplier = 1f;
     private float broomTimeLeft;
+    private float invincibleTimeLeft;
+    private float invincibleDuration;
     private float coyoteCounter;
     private float jumpBufferCounter;
     private float airTime;
@@ -44,14 +53,22 @@ public class PlayerController : MonoBehaviour
     public bool IsGrounded => isGrounded;
     public bool IsDead { get; private set; }
     public bool IsBroomActive { get; private set; }
+    public bool IsInvincible { get; private set; }
+    public int ExtraLives { get; private set; }
     public float BaseSpeed => baseSpeed;
     public float CurrentSpeed => baseSpeed * speedMultiplier;
     public float BroomTimeLeft => broomTimeLeft;
     public float BroomTimeNormalized => data.broomDuration > 0f ? Mathf.Clamp01(broomTimeLeft / data.broomDuration) : 0f;
+    public float InvincibleTimeLeft => invincibleTimeLeft;
+    public float InvincibleNormalized => invincibleDuration > 0f ? Mathf.Clamp01(invincibleTimeLeft / invincibleDuration) : 0f;
     public float MaxSpeedMultiplier => data.broomSpeedMultiplier;
 
     public event Action BroomStarted;
     public event Action BroomEnded;
+    public event Action InvincibilityStarted;
+    public event Action InvincibilityEnded;
+    public event Action<int> ExtraLivesChanged;
+    public event Action ExtraLifeUsed;
 
     private Vector2 Velocity
     {
@@ -96,11 +113,7 @@ public class PlayerController : MonoBehaviour
 
     private void Start()
     {
-        if (magicAura != null)
-        {
-            var emission = magicAura.emission;
-            emission.rateOverTime = auraRateNormal;
-        }
+        RefreshAura();
     }
 
     private void Update()
@@ -113,6 +126,7 @@ public class PlayerController : MonoBehaviour
         float dt = Time.deltaTime;
         UpdateSpeed(dt);
         UpdateBroom(dt);
+        UpdateInvincibility(dt);
         ReadInput(dt);
         TryJump();
         UpdateLanding(dt);
@@ -242,6 +256,7 @@ public class PlayerController : MonoBehaviour
         }
         IsBroomActive = true;
         SetBroomVisuals(true);
+        RefreshAura();
         BroomStarted?.Invoke();
     }
 
@@ -257,8 +272,50 @@ public class PlayerController : MonoBehaviour
             broomTimeLeft = 0f;
             IsBroomActive = false;
             SetBroomVisuals(false);
+            RefreshAura();
             BroomEnded?.Invoke();
         }
+    }
+
+    public void ActivateInvincibility()
+    {
+        ActivateInvincibility(data.invincibilityDuration);
+    }
+
+    private void ActivateInvincibility(float duration)
+    {
+        bool wasInvincible = IsInvincible;
+        IsInvincible = true;
+        invincibleDuration = duration;
+        invincibleTimeLeft = Mathf.Max(invincibleTimeLeft, duration);
+
+        if (!wasInvincible)
+        {
+            RefreshAura();
+            InvincibilityStarted?.Invoke();
+        }
+    }
+
+    private void UpdateInvincibility(float dt)
+    {
+        if (!IsInvincible)
+        {
+            return;
+        }
+        invincibleTimeLeft -= dt;
+        if (invincibleTimeLeft <= 0f)
+        {
+            invincibleTimeLeft = 0f;
+            IsInvincible = false;
+            RefreshAura();
+            InvincibilityEnded?.Invoke();
+        }
+    }
+
+    public void AddExtraLife()
+    {
+        ExtraLives++;
+        ExtraLivesChanged?.Invoke(ExtraLives);
     }
 
     private void SetBroomVisuals(bool active)
@@ -272,10 +329,32 @@ public class PlayerController : MonoBehaviour
             var trailEmission = broomTrail.emission;
             trailEmission.rateOverTime = active ? broomTrailRate : 0f;
         }
-        if (magicAura != null)
+    }
+
+    private void RefreshAura()
+    {
+        if (magicAura == null)
         {
-            var emission = magicAura.emission;
-            emission.rateOverTime = active ? auraRateBroom : auraRateNormal;
+            return;
+        }
+
+        var emission = magicAura.emission;
+        var main = magicAura.main;
+
+        if (IsInvincible)
+        {
+            emission.rateOverTime = auraRateInvincible;
+            main.startColor = new ParticleSystem.MinMaxGradient(invincibleColorA, invincibleColorB);
+        }
+        else if (IsBroomActive)
+        {
+            emission.rateOverTime = auraRateBroom;
+            main.startColor = new ParticleSystem.MinMaxGradient(auraColorA, auraColorB);
+        }
+        else
+        {
+            emission.rateOverTime = auraRateNormal;
+            main.startColor = new ParticleSystem.MinMaxGradient(auraColorA, auraColorB);
         }
     }
 
@@ -285,16 +364,30 @@ public class PlayerController : MonoBehaviour
         {
             return;
         }
-        if (other.GetComponent<Obstacle>() != null)
+        if (other.GetComponent<Obstacle>() == null)
         {
-            Die();
+            return;
         }
+        if (IsInvincible)
+        {
+            return;
+        }
+        if (ExtraLives > 0)
+        {
+            ExtraLives--;
+            ExtraLivesChanged?.Invoke(ExtraLives);
+            ExtraLifeUsed?.Invoke();
+            ActivateInvincibility(data.extraLifeGraceTime);
+            return;
+        }
+        Die();
     }
 
     private void Die()
     {
         IsDead = true;
         IsBroomActive = false;
+        IsInvincible = false;
         SetBroomVisuals(false);
         if (runDust != null)
         {

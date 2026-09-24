@@ -14,6 +14,19 @@ public class SpawnEntry
     public float unlockAfterSeconds = 0f;
 }
 
+[Serializable]
+public class PowerUpSlot
+{
+    public string name = "PowerUp";
+    public GameObject prefab;
+    public float firstDistance = 120f;
+    public float minDistance = 150f;
+    public float maxDistance = 260f;
+    public float height = 1.1f;
+
+    [NonSerialized] public float distanceUntil;
+}
+
 public class EndlessSpawner : MonoBehaviour
 {
     [Header("Referencias")]
@@ -26,7 +39,7 @@ public class EndlessSpawner : MonoBehaviour
     [Header("Prefabs")]
     [SerializeField] private List<SpawnEntry> obstacles = new List<SpawnEntry>();
     [SerializeField] private GameObject gemPrefab;
-    [SerializeField] private GameObject broomPrefab;
+    [SerializeField] private List<PowerUpSlot> powerUps = new List<PowerUpSlot>();
 
     [Header("Separacion entre obstaculos (distancia borde a borde)")]
     [SerializeField] private float minGap = 4f;
@@ -55,16 +68,9 @@ public class EndlessSpawner : MonoBehaviour
     [SerializeField] private float gemArcHalfWidth = 1.8f;
     [SerializeField] private int gemsPerArc = 5;
 
-    [Header("Escoba Magica")]
-    [SerializeField] private float broomFirstDistance = 90f;
-    [SerializeField] private float broomMinDistance = 140f;
-    [SerializeField] private float broomMaxDistance = 240f;
-    [SerializeField] private float broomHeight = 1.1f;
-
     private ObjectPool pool;
     private SpawnEntry pending;
     private float distanceUntilNext;
-    private float distanceUntilBroom;
 
     private float Difficulty01
     {
@@ -79,7 +85,10 @@ public class EndlessSpawner : MonoBehaviour
     {
         pool = new ObjectPool(transform);
         distanceUntilNext = initialDelayDistance;
-        distanceUntilBroom = broomFirstDistance;
+        foreach (PowerUpSlot slot in powerUps)
+        {
+            slot.distanceUntil = slot.firstDistance;
+        }
         pending = PickEntry();
         ValidateEntries();
     }
@@ -94,7 +103,10 @@ public class EndlessSpawner : MonoBehaviour
 
         float travelled = gm.WorldSpeed * Time.deltaTime;
         distanceUntilNext -= travelled;
-        distanceUntilBroom -= travelled;
+        foreach (PowerUpSlot slot in powerUps)
+        {
+            slot.distanceUntil -= travelled;
+        }
 
         if (distanceUntilNext <= 0f)
         {
@@ -132,12 +144,12 @@ public class EndlessSpawner : MonoBehaviour
 
     private void SpawnCollectibles(float gapStartX, float gapEndX, float nextObstacleX)
     {
-        bool broomDue = distanceUntilBroom <= 0f && broomPrefab != null && player != null && !player.IsBroomActive;
-        if (broomDue)
+        PowerUpSlot duePowerUp = PickDuePowerUp();
+        if (duePowerUp != null)
         {
             float mid = (gapStartX + gapEndX) * 0.5f;
-            Spawn(broomPrefab, mid, groundY + broomHeight);
-            distanceUntilBroom = Random.Range(broomMinDistance, broomMaxDistance);
+            Spawn(duePowerUp.prefab, mid, groundY + duePowerUp.height);
+            duePowerUp.distanceUntil = Random.Range(duePowerUp.minDistance, duePowerUp.maxDistance);
             return;
         }
 
@@ -167,6 +179,44 @@ public class EndlessSpawner : MonoBehaviour
                 float gy = groundY + Mathf.Lerp(gemRowHeight, gemArcHeight, 1f - u * u);
                 Spawn(gemPrefab, gx, gy);
             }
+        }
+    }
+
+    private PowerUpSlot PickDuePowerUp()
+    {
+        foreach (PowerUpSlot slot in powerUps)
+        {
+            if (slot.prefab == null || slot.distanceUntil > 0f)
+            {
+                continue;
+            }
+            if (IsPowerUpAvailable(slot.prefab))
+            {
+                return slot;
+            }
+        }
+        return null;
+    }
+
+    private bool IsPowerUpAvailable(GameObject prefab)
+    {
+        if (player == null)
+        {
+            return true;
+        }
+        PowerUp powerUp = prefab.GetComponent<PowerUp>();
+        if (powerUp == null)
+        {
+            return true;
+        }
+        switch (powerUp.Type)
+        {
+            case PowerUpType.MagicBroom:
+                return !player.IsBroomActive;
+            case PowerUpType.Invincibility:
+                return !player.IsInvincible;
+            default:
+                return true;
         }
     }
 

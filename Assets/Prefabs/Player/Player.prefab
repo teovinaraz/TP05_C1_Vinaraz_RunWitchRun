@@ -148,6 +148,8 @@ MonoBehaviour:
   broomTransform: {fileID: 452091030365964892}
   broomBobAmplitude: 0.06
   broomBobSpeed: 12
+  invincibleFlickerSpeed: 16
+  invincibleMinAlpha: 0.5
 --- !u!1 &2713021693803106080
 GameObject:
   m_ObjectHideFlags: 0
@@ -19782,9 +19784,14 @@ MonoBehaviour:
   landBurstCount: 10
   auraRateNormal: 6
   auraRateBroom: 40
+  auraRateInvincible: 45
   broomTrailRate: 90
   runDustRate: 14
   minAirTimeForLandEffect: 0.15
+  auraColorA: {r: 1, g: 0.88, b: 0.4, a: 1}
+  auraColorB: {r: 0.49, g: 0.94, b: 1, a: 1}
+  invincibleColorA: {r: 0.85, g: 1, b: 0.95, a: 1}
+  invincibleColorB: {r: 0.4, g: 1, b: 0.7, a: 1}
 --- !u!1 &8489647022751489707
 GameObject:
   m_ObjectHideFlags: 0

@@ -2,12 +2,16 @@ using UnityEngine;
 
 public enum PowerUpType
 {
-    MagicBroom
+    MagicBroom,
+    Invincibility,
+    ExtraLife
 }
 
 public class PowerUp : Pickup
 {
     [SerializeField] private PowerUpType type = PowerUpType.MagicBroom;
+
+    public PowerUpType Type => type;
 
     protected override void OnCollected(PlayerController player)
     {
@@ -15,6 +19,12 @@ public class PowerUp : Pickup
         {
             case PowerUpType.MagicBroom:
                 player.ActivateBroom();
+                break;
+            case PowerUpType.Invincibility:
+                player.ActivateInvincibility();
+                break;
+            case PowerUpType.ExtraLife:
+                player.AddExtraLife();
                 break;
         }
 

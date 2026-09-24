@@ -11,6 +11,12 @@ public class ParallaxLayer : MonoBehaviour
     private Transform[] tiles;
     private float tileWidth;
 
+    public void Configure(float newSpeedFactor, float newAmbientSpeed)
+    {
+        speedFactor = newSpeedFactor;
+        ambientSpeed = newAmbientSpeed;
+    }
+
     private void Awake()
     {
         tiles = GetComponentsInChildren<SpriteRenderer>()
